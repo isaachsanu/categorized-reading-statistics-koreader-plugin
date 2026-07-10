@@ -14,6 +14,11 @@ local PADDING = 20
 local TITLE_WIDTH = 256
 local HEADER_HEIGHT = 48
 local BOOK_ROW_HEIGHT = 64
+local BOOK_TITLE_SIZE = 12
+local BOOK_COLLECTION_SIZE = 10
+local BOOK_TITLE_Y_OFFSET = 6
+local BOOK_COLLECTION_Y_OFFSET = 30
+local BOOK_COLLECTION_FONT = "NotoSans-Italic.ttf"
 local MIN_HOUR_WIDTH = 28
 local BOX_VERTICAL_PADDING = 8
 local BOX_LABEL_SIZE = 12
@@ -43,16 +48,16 @@ local function paint_border(bb, x, y, w, h)
     paint_rect(bb, x + w - 1, y, 1, h)
 end
 
-local function text_widget(text, size, color)
+local function text_widget(text, size, color, font_face)
     return TextWidget:new{
         text = tostring(text or ""),
-        face = Font:getFace("cfont", size or 14),
+        face = Font:getFace(font_face or "cfont", size or 14),
         fgcolor = color,
     }
 end
 
-local function paint_text(bb, text, x, y, size, color)
-    local widget = text_widget(text, size, color)
+local function paint_text(bb, text, x, y, size, color, font_face)
+    local widget = text_widget(text, size, color, font_face)
     widget:paintTo(bb, x, y)
     local dimen = widget:getSize()
     return dimen.w, dimen.h
@@ -67,13 +72,13 @@ local function clamp(value, min_value, max_value)
     return math.max(min_value, math.min(max_value, value))
 end
 
-local function crop_to_width(text, max_width, size)
+local function crop_to_width(text, max_width, size, font_face)
     text = tostring(text or "")
     if max_width <= 0 then
         return ""
     end
 
-    local widget = text_widget(text, size)
+    local widget = text_widget(text, size, nil, font_face)
     if widget:getSize().w <= max_width then
         return text
     end
@@ -82,7 +87,7 @@ local function crop_to_width(text, max_width, size)
     local high = #text
     while low < high do
         local mid = math.ceil((low + high) / 2)
-        widget = text_widget(text:sub(1, mid), size)
+        widget = text_widget(text:sub(1, mid), size, nil, font_face)
         if widget:getSize().w <= max_width then
             low = mid
         else
@@ -255,6 +260,7 @@ local function collect_books(segments)
             book = {
                 key = key,
                 title = segment.title,
+                collections = segment.collections or {},
                 first_start = segment.start_time,
                 segments = {},
             }
@@ -373,7 +379,34 @@ function DailyTimelineWidget:paintTo(bb, x, y)
     for index, book in ipairs(books) do
         local row_y = table_y + HEADER_HEIGHT + ((index - 1) * BOOK_ROW_HEIGHT)
         paint_rect(bb, table_x, row_y, grid_width, 1)
-        paint_text(bb, crop_to_width(book.title, title_width - 8, 12), table_x + 4, row_y + 8, 12)
+        local title = crop_to_width(book.title, title_width - 8, BOOK_TITLE_SIZE)
+        local collection_label = Format.list(
+            book.collections,
+            self.report.config and self.report.config.unknown_label or "Unknown"
+        )
+        collection_label = crop_to_width(
+            collection_label,
+            title_width - 8,
+            BOOK_COLLECTION_SIZE,
+            BOOK_COLLECTION_FONT
+        )
+
+        paint_text(
+            bb,
+            title,
+            table_x + 4,
+            row_y + BOOK_TITLE_Y_OFFSET,
+            BOOK_TITLE_SIZE
+        )
+        paint_text(
+            bb,
+            collection_label,
+            table_x + 4,
+            row_y + BOOK_COLLECTION_Y_OFFSET,
+            BOOK_COLLECTION_SIZE,
+            nil,
+            BOOK_COLLECTION_FONT
+        )
     end
 
     for index, book in ipairs(books) do

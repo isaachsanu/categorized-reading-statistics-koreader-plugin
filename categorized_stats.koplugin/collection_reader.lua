@@ -97,6 +97,9 @@ function CollectionReader:read()
     end
 
     table.sort(result.collection_names)
+    for _, entry in pairs(result.by_md5) do
+        table.sort(entry.collections)
+    end
     return result
 end
 
