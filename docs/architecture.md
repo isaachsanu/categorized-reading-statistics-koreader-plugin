@@ -134,11 +134,15 @@ Daily Log uses a database-level daily total per date and book.
 5. Convert every positive-duration segment into an hour-cell block.
 6. Merge overlapping or adjacent blocks for the same book.
 7. Sum original segment durations into the merged block label.
-8. Render rows as book titles and columns as hours 00 through 23.
+8. Preserve the merged block's time range and unique page count for detail
+   display.
+9. Render rows as book titles and columns as hours 00 through 23.
 ```
 
 The Daily Timeline painter renders the final Gantt blocks only. Aggregation
-logic decides which hour cells a block covers and what duration label it shows.
+logic decides which hour cells a block covers, what duration label it shows,
+and what is presented in the non-fullscreen detail popup when a title cell or
+Gantt block is tapped.
 
 ### Unknown Items Flow
 

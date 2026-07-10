@@ -39,7 +39,7 @@ Books that belong to multiple Collections may appear in each matching category.
 ## Features
 1. Global stats by Collection
 2. Weekly view
-3. Daily timeline
+3. Daily timeline with clickable book details
 4. Daily log
 5. Unknown items review
 

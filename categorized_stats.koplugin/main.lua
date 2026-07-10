@@ -12,6 +12,7 @@ local CollectionReader = require("collection_reader")
 local Config = require("config")
 local DailyLogView = require("views/daily_log")
 local DailyTimelineView = require("views/daily_timeline")
+local DailyTimelineDetailPopupView = require("views/daily_timeline_detail_popup")
 local GlobalStatsView = require("views/global_stats")
 local StatsReader = require("stats_reader")
 local UnknownItemsView = require("views/unknown_items")
@@ -221,8 +222,23 @@ function CategorizedStats:showDailyTimeline(date, return_week_key)
         on_back = return_week_key and function()
             self:showWeeklyView(return_week_key)
         end or nil,
+        on_select_book = function(book, selected_date)
+            self:showDailyTimelineDetail(book, selected_date)
+        end,
     }
     UIManager:show(widget)
+end
+
+function CategorizedStats:showDailyTimelineDetail(book, date)
+    local popup
+    popup = DailyTimelineDetailPopupView.newWidget{
+        book = book,
+        date = date,
+        on_close = function()
+            UIManager:close(popup)
+        end,
+    }
+    UIManager:show(popup)
 end
 
 function CategorizedStats:onShowCategorizedStatsGlobal()

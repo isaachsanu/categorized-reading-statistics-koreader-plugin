@@ -179,7 +179,27 @@ local function segment_hour_block(segment)
         start_hour = start_hour,
         end_hour = end_hour,
         duration = duration,
+        start_time = segment.start_time,
+        end_time = segment.end_time,
+        start_label = segment.start_label,
+        end_label = segment.end_label,
+        page = segment.page,
+        pages = 0,
     }
+end
+
+local function add_block_pages(block, source)
+    block.page_keys = block.page_keys or {}
+
+    if source.page ~= nil then
+        local page_key = tostring(source.page)
+        if not block.page_keys[page_key] then
+            block.page_keys[page_key] = true
+            block.pages = (block.pages or 0) + 1
+        end
+    elseif tonumber(source.pages) and tonumber(source.pages) > 0 then
+        block.pages = (block.pages or 0) + tonumber(source.pages)
+    end
 end
 
 local function collect_gantt_blocks(segments)
@@ -188,6 +208,7 @@ local function collect_gantt_blocks(segments)
     for _, segment in ipairs(segments or {}) do
         local block = segment_hour_block(segment)
         if block then
+            add_block_pages(block, segment)
             table.insert(blocks, block)
         end
     end
@@ -205,27 +226,65 @@ local function collect_gantt_blocks(segments)
         if current and block.start_hour <= current.end_hour + 1 then
             current.end_hour = math.max(current.end_hour, block.end_hour)
             current.duration = current.duration + block.duration
+            if block.start_time and (not current.start_time or block.start_time < current.start_time) then
+                current.start_time = block.start_time
+                current.start_label = block.start_label
+            end
+            if block.end_time and (not current.end_time or block.end_time > current.end_time) then
+                current.end_time = block.end_time
+                current.end_label = block.end_label
+            elseif block.end_time == current.end_time and block.end_label == "24:00" then
+                current.end_label = block.end_label
+            end
+            for page_key in pairs(block.page_keys or {}) do
+                if not current.page_keys[page_key] then
+                    current.page_keys[page_key] = true
+                    current.pages = current.pages + 1
+                end
+            end
         else
             table.insert(merged, {
                 start_hour = block.start_hour,
                 end_hour = block.end_hour,
                 duration = block.duration,
+                start_time = block.start_time,
+                end_time = block.end_time,
+                start_label = block.start_label,
+                end_label = block.end_label,
+                pages = block.pages,
+                page_keys = block.page_keys,
             })
         end
+    end
+
+    for _, block in ipairs(merged) do
+        block.page_keys = nil
     end
 
     return merged
 end
 
-local function paint_hour_block_box(bb, table_x, title_width, hour_width, row_y, block)
+local function hour_block_box(table_x, title_width, hour_width, row_y, block)
     local left = table_x + title_width + (block.start_hour * hour_width)
     local width = math.max(3, ((block.end_hour - block.start_hour + 1) * hour_width) - 1)
     local box_y = row_y + BOX_VERTICAL_PADDING
     local box_h = math.max(4, BOOK_ROW_HEIGHT - (BOX_VERTICAL_PADDING * 2))
 
-    paint_rect(bb, left + 1, box_y, width, box_h, GANTT_FILL_COLOR)
-    paint_border(bb, left + 1, box_y, width, box_h)
-    paint_centered_text(bb, duration_label(block.duration), left + 1, box_y, width, box_h, BOX_LABEL_SIZE)
+    return {
+        x = left + 1,
+        y = box_y,
+        w = width,
+        h = box_h,
+    }
+end
+
+local function paint_hour_block_box(bb, table_x, title_width, hour_width, row_y, block)
+    local box = hour_block_box(table_x, title_width, hour_width, row_y, block)
+
+    paint_rect(bb, box.x, box.y, box.w, box.h, GANTT_FILL_COLOR)
+    paint_border(bb, box.x, box.y, box.w, box.h)
+    paint_centered_text(bb, duration_label(block.duration), box.x, box.y, box.w, box.h, BOX_LABEL_SIZE)
+    return box
 end
 
 local function paint_hour_segment_box(bb, table_x, title_width, hour_width, row_y, segment)
@@ -278,6 +337,10 @@ local function collect_books(segments)
         return a.first_start < b.first_start
     end)
 
+    for _, book in ipairs(books) do
+        book.merged_blocks = collect_gantt_blocks(book.segments)
+    end
+
     return books
 end
 
@@ -311,13 +374,14 @@ function DailyTimelineWidget:init()
     }
 end
 
-function DailyTimelineWidget:add_hitbox(action, x, y, w, h)
+function DailyTimelineWidget:add_hitbox(action, x, y, w, h, value)
     table.insert(self.hitboxes, {
         action = action,
         x = x,
         y = y,
         w = w,
         h = h,
+        value = value,
     })
 end
 
@@ -407,12 +471,14 @@ function DailyTimelineWidget:paintTo(bb, x, y)
             nil,
             BOOK_COLLECTION_FONT
         )
+        self:add_hitbox("open_book", table_x, row_y, title_width, BOOK_ROW_HEIGHT, book)
     end
 
     for index, book in ipairs(books) do
         local row_y = table_y + HEADER_HEIGHT + ((index - 1) * BOOK_ROW_HEIGHT)
-        for _, block in ipairs(collect_gantt_blocks(book.segments)) do
-            paint_hour_block_box(bb, table_x, title_width, hour_width, row_y, block)
+        for _, block in ipairs(book.merged_blocks or {}) do
+            local box = paint_hour_block_box(bb, table_x, title_width, hour_width, row_y, block)
+            self:add_hitbox("open_book", box.x, box.y, box.w, box.h, book)
         end
     end
 end
@@ -426,6 +492,9 @@ function DailyTimelineWidget:handle_tap(ges)
                 return true
             elseif box.action == "back" and self.on_back then
                 self.on_back()
+                return true
+            elseif box.action == "open_book" and self.on_select_book then
+                self.on_select_book(box.value, self.date)
                 return true
             end
         end
@@ -446,6 +515,14 @@ end
 
 function DailyTimelineView.newWidget(args)
     return DailyTimelineWidget:new(args)
+end
+
+function DailyTimelineView.collectGanttBlocks(segments)
+    return collect_gantt_blocks(segments)
+end
+
+function DailyTimelineView.durationLabel(seconds)
+    return duration_label(seconds)
 end
 
 function DailyTimelineView.render(report, date)
