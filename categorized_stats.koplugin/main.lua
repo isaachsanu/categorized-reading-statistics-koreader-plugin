@@ -182,6 +182,20 @@ function CategorizedStats:showWeeklyView(week_key)
     end
 
     local widget
+    local function select_week(selected_week_key)
+        if not selected_week_key then
+            return
+        end
+
+        if widget:setWeek(
+            selected_week_key,
+            WeeklyBarsView.previous_week_key(report, selected_week_key),
+            WeeklyBarsView.next_week_key(report, selected_week_key)
+        ) then
+            UIManager:setDirty(widget, "ui")
+        end
+    end
+
     widget = WeeklyBarsView.newWidget{
         report = report,
         week_key = week_key,
@@ -190,12 +204,8 @@ function CategorizedStats:showWeeklyView(week_key)
         on_close = function()
             UIManager:close(widget)
         end,
-        on_previous_week = function()
-            self:showWeeklyView(WeeklyBarsView.previous_week_key(report, week_key))
-        end,
-        on_next_week = function()
-            self:showWeeklyView(WeeklyBarsView.next_week_key(report, week_key))
-        end,
+        on_previous_week = select_week,
+        on_next_week = select_week,
         on_select_day = function(date, selected_week_key)
             self:showDailyTimeline(date, selected_week_key)
         end,
@@ -220,7 +230,7 @@ function CategorizedStats:showDailyTimeline(date, return_week_key)
             UIManager:close(widget)
         end,
         on_back = return_week_key and function()
-            self:showWeeklyView(return_week_key)
+            UIManager:close(widget)
         end or nil,
         on_select_book = function(book, selected_date)
             self:showDailyTimelineDetail(book, selected_date)

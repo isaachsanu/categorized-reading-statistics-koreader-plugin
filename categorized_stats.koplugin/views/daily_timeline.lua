@@ -4,6 +4,7 @@ local Font = require("ui/font")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local ScrollableContainer = require("ui/widget/container/scrollablecontainer")
 local TextWidget = require("ui/widget/textwidget")
 
 local Format = require("views/format")
@@ -27,6 +28,7 @@ local GANTT_FILL_COLOR = Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_GRAY or 
 local BUTTON_WIDTH = 108
 local BUTTON_HEIGHT = 60
 local BUTTON_GAP = 16
+local TABLE_TOP_OFFSET = 128
 
 local function screen_width()
     return Device.screen:getWidth()
@@ -362,6 +364,155 @@ local function point_in_box(pos, box)
         and pos.y <= box.y + box.h
 end
 
+local function timeline_layout(table_width)
+    local title_width = math.min(TITLE_WIDTH, math.max(1, math.floor(table_width / 3)))
+    local hour_area_width = table_width - title_width
+    local hour_width = math.max(MIN_HOUR_WIDTH, math.floor(hour_area_width / 24))
+    if hour_width * 24 > hour_area_width then
+        hour_width = math.max(1, math.floor(hour_area_width / 24))
+    end
+
+    return {
+        title_width = title_width,
+        hour_width = hour_width,
+        grid_width = title_width + (hour_width * 24),
+    }
+end
+
+local function book_scroll_grid(books)
+    local rows = {}
+    for index = 1, #books do
+        local top = (index - 1) * BOOK_ROW_HEIGHT
+        table.insert(rows, {
+            top = top,
+            bottom = top + BOOK_ROW_HEIGHT - 1,
+            content_top = top,
+            content_bottom = top + BOOK_ROW_HEIGHT - 1,
+        })
+    end
+    return rows
+end
+
+local DailyTimelineContent = InputContainer:extend{
+    name = "categorized_stats_daily_timeline_content",
+}
+
+function DailyTimelineContent:init()
+    self.dimen = self.dimen or Geom:new{
+        x = 0,
+        y = 0,
+        w = screen_width(),
+        h = 1,
+    }
+    self.hitboxes = {}
+    self.ges_events = {
+        TapSelect = {
+            GestureRange:new{
+                ges = "tap",
+                range = Geom:new{
+                    x = 0,
+                    y = 0,
+                    w = screen_width(),
+                    h = screen_height(),
+                },
+            },
+        },
+    }
+    self:setWidth(self.dimen.w)
+end
+
+function DailyTimelineContent:setWidth(width)
+    self.dimen.w = math.max(1, width)
+    self.dimen.h = math.max(1, #(self.books or {}) * BOOK_ROW_HEIGHT)
+    self.layout = timeline_layout(self.dimen.w)
+end
+
+function DailyTimelineContent:add_hitbox(x, y, w, h, book)
+    table.insert(self.hitboxes, {
+        x = x,
+        y = y,
+        w = w,
+        h = h,
+        value = book,
+    })
+end
+
+function DailyTimelineContent:paintTo(bb, x, y)
+    self.hitboxes = {}
+    self.dimen.x = x
+    self.dimen.y = y
+
+    if #(self.books or {}) == 0 then
+        return
+    end
+
+    local title_width = self.layout.title_width
+    local hour_width = self.layout.hour_width
+    local grid_width = self.layout.grid_width
+
+    paint_border(bb, x, y, grid_width, self.dimen.h)
+    paint_rect(bb, x + title_width, y, 1, self.dimen.h)
+    for hour = 1, 23 do
+        paint_rect(bb, x + title_width + (hour * hour_width), y, 1, self.dimen.h)
+    end
+
+    for index, book in ipairs(self.books) do
+        local row_y = y + ((index - 1) * BOOK_ROW_HEIGHT)
+        if index > 1 then
+            paint_rect(bb, x, row_y, grid_width, 1)
+        end
+
+        local title = crop_to_width(book.title, title_width - 8, BOOK_TITLE_SIZE)
+        local collection_label = Format.list(
+            book.collections,
+            self.report.config and self.report.config.unknown_label or "Unknown"
+        )
+        collection_label = crop_to_width(
+            collection_label,
+            title_width - 8,
+            BOOK_COLLECTION_SIZE,
+            BOOK_COLLECTION_FONT
+        )
+
+        paint_text(bb, title, x + 4, row_y + BOOK_TITLE_Y_OFFSET, BOOK_TITLE_SIZE)
+        paint_text(
+            bb,
+            collection_label,
+            x + 4,
+            row_y + BOOK_COLLECTION_Y_OFFSET,
+            BOOK_COLLECTION_SIZE,
+            nil,
+            BOOK_COLLECTION_FONT
+        )
+        self:add_hitbox(x, row_y, title_width, BOOK_ROW_HEIGHT, book)
+
+        for _, block in ipairs(book.merged_blocks or {}) do
+            local box = paint_hour_block_box(bb, x, title_width, hour_width, row_y, block)
+            self:add_hitbox(box.x, box.y, box.w, box.h, book)
+        end
+    end
+end
+
+function DailyTimelineContent:handle_tap(ges)
+    local pos = ges and (ges.pos or ges)
+    for _, box in ipairs(self.hitboxes or {}) do
+        if point_in_box(pos, box) then
+            if self.on_select_book then
+                self.on_select_book(box.value, self.date)
+            end
+            return true
+        end
+    end
+end
+
+function DailyTimelineContent:onTapSelect(_, ges)
+    return self:handle_tap(ges)
+end
+
+function DailyTimelineContent:onTap(_, ges)
+    return self:handle_tap(ges)
+end
+
 local DailyTimelineWidget = InputContainer:extend{
     name = "categorized_stats_daily_timeline",
 }
@@ -382,6 +533,41 @@ function DailyTimelineWidget:init()
             },
         },
     }
+
+    local segments = self.report.timeline_by_date[self.date] or {}
+    self.books = collect_books(segments)
+    self.table_y = PADDING + TABLE_TOP_OFFSET
+    self.body_y = self.table_y + HEADER_HEIGHT
+    self.content = DailyTimelineContent:new{
+        report = self.report,
+        date = self.date,
+        books = self.books,
+        on_select_book = self.on_select_book,
+        dimen = Geom:new{
+            x = 0,
+            y = 0,
+            w = self.dimen.w - (PADDING * 2),
+            h = 1,
+        },
+    }
+    self.scrollable = ScrollableContainer:new{
+        dimen = Geom:new{
+            x = 0,
+            y = 0,
+            w = self.dimen.w - (PADDING * 2),
+            h = math.max(1, self.dimen.h - self.body_y),
+        },
+        step_scroll_grid = book_scroll_grid(self.books),
+        self.content,
+    }
+    local scrollbar_gutter = self.content.dimen.h > self.scrollable.dimen.h
+        and self.scrollable:getScrollbarWidth()
+        or 0
+    self.content:setWidth(self.scrollable.dimen.w - scrollbar_gutter)
+    self.content.show_parent = self
+    self.scrollable.show_parent = self
+    self.cropping_widget = self.scrollable
+    self[1] = self.scrollable
 end
 
 function DailyTimelineWidget:add_hitbox(action, x, y, w, h, value)
@@ -399,23 +585,16 @@ function DailyTimelineWidget:paintTo(bb, x, y)
     self.hitboxes = {}
     x = x or 0
     y = y or 0
+    self.dimen.x = x
+    self.dimen.y = y
 
     paint_rect(bb, x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
 
-    local segments = self.report.timeline_by_date[self.date] or {}
-    local books = collect_books(segments)
-    local content_width = self.dimen.w - (PADDING * 2)
     local table_x = x + PADDING
-    local table_y = y + PADDING + 128
-    local table_width = content_width
-    local title_width = math.min(TITLE_WIDTH, math.max(1, math.floor(table_width / 3)))
-    local hour_area_width = table_width - title_width
-    local hour_width = math.max(MIN_HOUR_WIDTH, math.floor(hour_area_width / 24))
-    if hour_width * 24 > hour_area_width then
-        hour_width = math.max(1, math.floor(hour_area_width / 24))
-    end
-    local grid_width = title_width + (hour_width * 24)
-    local grid_height = HEADER_HEIGHT + (#books * BOOK_ROW_HEIGHT)
+    local table_y = y + self.table_y
+    local title_width = self.content.layout.title_width
+    local hour_width = self.content.layout.hour_width
+    local grid_width = self.content.layout.grid_width
 
     paint_text(bb, "Daily Timeline", x + PADDING, y + PADDING + 4, 20)
 
@@ -432,65 +611,24 @@ function DailyTimelineWidget:paintTo(bb, x, y)
 
     paint_text(bb, "Date: " .. (self.date or ""), x + PADDING, y + PADDING + BUTTON_HEIGHT, 16)
 
-    if #books == 0 then
+    if #self.books == 0 then
         paint_text(bb, "No reading activity found for this day.", x + PADDING, table_y, 16)
         return
     end
 
-    paint_border(bb, table_x, table_y, grid_width, grid_height)
-    paint_rect(bb, table_x + title_width, table_y, 1, grid_height)
-    paint_rect(bb, table_x, table_y + HEADER_HEIGHT, grid_width, 1)
+    paint_border(bb, table_x, table_y, grid_width, HEADER_HEIGHT + 1)
+    paint_rect(bb, table_x + title_width, table_y, 1, HEADER_HEIGHT)
 
     paint_text(bb, "Title", table_x + 4, table_y + 8, 12)
     for hour = 0, 23 do
         local column_x = table_x + title_width + (hour * hour_width)
         if hour > 0 then
-            paint_rect(bb, column_x, table_y, 1, grid_height)
+            paint_rect(bb, column_x, table_y, 1, HEADER_HEIGHT)
         end
         paint_text(bb, string.format("%02d", hour), column_x + 2, table_y + 8, 11)
     end
 
-    for index, book in ipairs(books) do
-        local row_y = table_y + HEADER_HEIGHT + ((index - 1) * BOOK_ROW_HEIGHT)
-        paint_rect(bb, table_x, row_y, grid_width, 1)
-        local title = crop_to_width(book.title, title_width - 8, BOOK_TITLE_SIZE)
-        local collection_label = Format.list(
-            book.collections,
-            self.report.config and self.report.config.unknown_label or "Unknown"
-        )
-        collection_label = crop_to_width(
-            collection_label,
-            title_width - 8,
-            BOOK_COLLECTION_SIZE,
-            BOOK_COLLECTION_FONT
-        )
-
-        paint_text(
-            bb,
-            title,
-            table_x + 4,
-            row_y + BOOK_TITLE_Y_OFFSET,
-            BOOK_TITLE_SIZE
-        )
-        paint_text(
-            bb,
-            collection_label,
-            table_x + 4,
-            row_y + BOOK_COLLECTION_Y_OFFSET,
-            BOOK_COLLECTION_SIZE,
-            nil,
-            BOOK_COLLECTION_FONT
-        )
-        self:add_hitbox("open_book", table_x, row_y, title_width, BOOK_ROW_HEIGHT, book)
-    end
-
-    for index, book in ipairs(books) do
-        local row_y = table_y + HEADER_HEIGHT + ((index - 1) * BOOK_ROW_HEIGHT)
-        for _, block in ipairs(book.merged_blocks or {}) do
-            local box = paint_hour_block_box(bb, table_x, title_width, hour_width, row_y, block)
-            self:add_hitbox("open_book", box.x, box.y, box.w, box.h, book)
-        end
-    end
+    self.scrollable:paintTo(bb, table_x, y + self.body_y)
 end
 
 function DailyTimelineWidget:handle_tap(ges)
@@ -502,9 +640,6 @@ function DailyTimelineWidget:handle_tap(ges)
                 return true
             elseif box.action == "back" and self.on_back then
                 self.on_back()
-                return true
-            elseif box.action == "open_book" and self.on_select_book then
-                self.on_select_book(box.value, self.date)
                 return true
             end
         end
