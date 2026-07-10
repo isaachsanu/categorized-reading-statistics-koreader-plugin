@@ -10,21 +10,22 @@ local Format = require("views/format")
 
 local DailyTimelineView = {}
 
-local PADDING = 20
+local FONT_SCALE = 1.35
+local PADDING = 36
 local TITLE_WIDTH = 256
-local HEADER_HEIGHT = 48
-local BOOK_ROW_HEIGHT = 64
+local HEADER_HEIGHT = 60
+local BOOK_ROW_HEIGHT = 84
 local BOOK_TITLE_SIZE = 12
 local BOOK_COLLECTION_SIZE = 10
 local BOOK_TITLE_Y_OFFSET = 6
-local BOOK_COLLECTION_Y_OFFSET = 30
+local BOOK_COLLECTION_Y_OFFSET = 34
 local BOOK_COLLECTION_FONT = "NotoSans-Italic.ttf"
 local MIN_HOUR_WIDTH = 28
 local BOX_VERTICAL_PADDING = 8
 local BOX_LABEL_SIZE = 12
 local GANTT_FILL_COLOR = Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_GRAY or Blitbuffer.COLOR_BLACK
-local BUTTON_WIDTH = 96
-local BUTTON_HEIGHT = 48
+local BUTTON_WIDTH = 108
+local BUTTON_HEIGHT = 60
 local BUTTON_GAP = 16
 
 local function screen_width()
@@ -48,10 +49,14 @@ local function paint_border(bb, x, y, w, h)
     paint_rect(bb, x + w - 1, y, 1, h)
 end
 
+local function scaled_font_size(size)
+    return math.floor(((tonumber(size) or 14) * FONT_SCALE) + 0.5)
+end
+
 local function text_widget(text, size, color, font_face)
     return TextWidget:new{
         text = tostring(text or ""),
-        face = Font:getFace(font_face or "cfont", size or 14),
+        face = Font:getFace(font_face or "cfont", scaled_font_size(size or 14)),
         fgcolor = color,
     }
 end
@@ -113,7 +118,12 @@ local function duration_label(seconds)
 end
 
 local function paint_centered_text(bb, text, x, y, w, h, size)
-    local widget = text_widget(text, size, Blitbuffer.COLOR_WHITE)
+    local display_text = crop_to_width(text, math.max(0, w - 4), size)
+    if display_text == "" then
+        return
+    end
+
+    local widget = text_widget(display_text, size, Blitbuffer.COLOR_WHITE)
     local dimen = widget:getSize()
     local text_w = dimen.w
     local text_h = dimen.h
@@ -420,7 +430,7 @@ function DailyTimelineWidget:paintTo(bb, x, y)
         self:add_hitbox("back", back_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
     end
 
-    paint_text(bb, "Date: " .. (self.date or ""), x + PADDING, y + PADDING + BUTTON_HEIGHT + 18, 16)
+    paint_text(bb, "Date: " .. (self.date or ""), x + PADDING, y + PADDING + BUTTON_HEIGHT, 16)
 
     if #books == 0 then
         paint_text(bb, "No reading activity found for this day.", x + PADDING, table_y, 16)

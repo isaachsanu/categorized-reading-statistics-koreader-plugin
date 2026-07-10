@@ -9,6 +9,15 @@ local DailyTimelineView = require("views/daily_timeline")
 
 local DailyTimelineDetailPopupView = {}
 
+local FONT_SCALE = 1.35
+local POPUP_MAX_HEIGHT_RATIO = 0.75
+local POPUP_LINE_HEIGHT = 32
+local POPUP_MIN_CONTENT_HEIGHT = 160
+
+local function scaled_font_size(size)
+    return math.floor(((tonumber(size) or 14) * FONT_SCALE) + 0.5)
+end
+
 local function page_label(pages)
     pages = math.max(0, math.floor(tonumber(pages) or 0))
     return string.format("%d %s", pages, pages == 1 and "page" or "pages")
@@ -68,15 +77,15 @@ function DailyTimelineDetailPopupView.newWidget(args)
     }
 
     local content_width = popup:getAddedWidgetAvailableWidth()
-    local max_height = math.floor(Device.screen:getHeight() * 0.55)
+    local max_height = math.floor(Device.screen:getHeight() * POPUP_MAX_HEIGHT_RATIO)
     local content_height = math.min(
         max_height,
-        math.max(120, line_count * 24)
+        math.max(POPUP_MIN_CONTENT_HEIGHT, line_count * POPUP_LINE_HEIGHT)
     )
 
     popup:addWidget(ScrollTextWidget:new{
         text = text,
-        face = Font:getFace("infofont", 14),
+        face = Font:getFace("infofont", scaled_font_size(14)),
         width = content_width,
         height = content_height,
         dialog = popup,
