@@ -15,15 +15,16 @@ local FONT_SCALE = 1.35
 local PADDING = 36
 local TITLE_WIDTH = 256
 local HEADER_HEIGHT = 60
-local BOOK_ROW_HEIGHT = 84
+local BOOK_ROW_HEIGHT = 96
 local BOOK_TITLE_SIZE = 12
 local BOOK_COLLECTION_SIZE = 10
-local BOOK_TITLE_Y_OFFSET = 6
+local BOOK_TITLE_Y_OFFSET = 0
 local BOOK_COLLECTION_Y_OFFSET = 34
 local BOOK_COLLECTION_FONT = "NotoSans-Italic.ttf"
 local MIN_HOUR_WIDTH = 28
 local BOX_VERTICAL_PADDING = 8
-local BOX_LABEL_SIZE = 12
+local BOX_LABEL_SIZE = 6
+local BOX_LABEL_FONT = "NotoSans-Bold.ttf"
 local GANTT_FILL_COLOR = Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_GRAY or Blitbuffer.COLOR_BLACK
 local BUTTON_WIDTH = 108
 local BUTTON_HEIGHT = 60
@@ -119,13 +120,13 @@ local function duration_label(seconds)
     return string.format("%dm", minutes)
 end
 
-local function paint_centered_text(bb, text, x, y, w, h, size)
-    local display_text = crop_to_width(text, math.max(0, w - 4), size)
+local function paint_centered_text(bb, text, x, y, w, h, size, font_face)
+    local display_text = crop_to_width(text, math.max(0, w - 4), size, font_face)
     if display_text == "" then
         return
     end
 
-    local widget = text_widget(display_text, size, Blitbuffer.COLOR_WHITE)
+    local widget = text_widget(display_text, size, Blitbuffer.COLOR_WHITE, font_face)
     local dimen = widget:getSize()
     local text_w = dimen.w
     local text_h = dimen.h
@@ -295,7 +296,16 @@ local function paint_hour_block_box(bb, table_x, title_width, hour_width, row_y,
 
     paint_rect(bb, box.x, box.y, box.w, box.h, GANTT_FILL_COLOR)
     paint_border(bb, box.x, box.y, box.w, box.h)
-    paint_centered_text(bb, duration_label(block.duration), box.x, box.y, box.w, box.h, BOX_LABEL_SIZE)
+    paint_centered_text(
+        bb,
+        duration_label(block.duration),
+        box.x,
+        box.y,
+        box.w,
+        box.h,
+        BOX_LABEL_SIZE,
+        BOX_LABEL_FONT
+    )
     return box
 end
 
@@ -625,7 +635,7 @@ function DailyTimelineWidget:paintTo(bb, x, y)
         if hour > 0 then
             paint_rect(bb, column_x, table_y, 1, HEADER_HEIGHT)
         end
-        paint_text(bb, string.format("%02d", hour), column_x + 2, table_y + 8, 11)
+        paint_text(bb, string.format("%02d", hour), column_x + 2, table_y + 8, 8)
     end
 
     self.scrollable:paintTo(bb, table_x, y + self.body_y)
