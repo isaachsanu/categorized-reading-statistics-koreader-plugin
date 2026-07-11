@@ -305,13 +305,11 @@ local WeeklyBarsWidget = InputContainer:extend{
     name = "categorized_stats_weekly_bars",
 }
 
-function WeeklyBarsWidget:init()
-    self.dimen = Geom:new{
-        x = 0,
-        y = 0,
-        w = screen_width(),
-        h = screen_height(),
-    }
+local WeeklyBarsControls = InputContainer:extend{
+    name = "categorized_stats_weekly_bars_controls",
+}
+
+function WeeklyBarsControls:init()
     self.hitboxes = {}
     self.ges_events = {
         TapSelect = {
@@ -321,8 +319,90 @@ function WeeklyBarsWidget:init()
             },
         },
     }
+end
 
+function WeeklyBarsControls:add_hitbox(action, x, y, w, h)
+    table.insert(self.hitboxes, {
+        action = action,
+        x = x,
+        y = y,
+        w = w,
+        h = h,
+    })
+end
+
+function WeeklyBarsControls:paintTo(bb, x, y)
+    self.hitboxes = {}
+    self.dimen.x = x
+    self.dimen.y = y
+
+    local owner = self.owner
+    local cursor_y = y + PADDING
+    paint_text(bb, "Weekly View", x + PADDING, cursor_y + 4, 20)
+
+    local close_x = x + self.dimen.w - PADDING - BUTTON_WIDTH
+    paint_button(bb, "Close", close_x, cursor_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+    self:add_hitbox("close", close_x, cursor_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+    cursor_y = cursor_y + BUTTON_HEIGHT + HEADER_GAP
+
+    paint_text(bb, "Week of " .. Format.date_label(owner.week_key), x + PADDING, cursor_y, 16)
+    cursor_y = cursor_y + WEEK_INFO_HEIGHT + HEADER_GAP
+
+    if owner.previous_week_key then
+        paint_button(bb, "< Previous", x + PADDING, cursor_y, PREVIOUS_BUTTON_WIDTH, BUTTON_HEIGHT)
+        self:add_hitbox("previous_week", x + PADDING, cursor_y, PREVIOUS_BUTTON_WIDTH, BUTTON_HEIGHT)
+    end
+    if owner.next_week_key then
+        local next_x = x + PADDING + PREVIOUS_BUTTON_WIDTH + BUTTON_GAP
+        paint_button(bb, "Next >", next_x, cursor_y, NEXT_BUTTON_WIDTH, BUTTON_HEIGHT)
+        self:add_hitbox("next_week", next_x, cursor_y, NEXT_BUTTON_WIDTH, BUTTON_HEIGHT)
+    end
+end
+
+function WeeklyBarsControls:handle_tap(ges)
+    local pos = ges and (ges.pos or ges)
+    local owner = self.owner
+    for _, box in ipairs(self.hitboxes or {}) do
+        if point_in_box(pos, box) then
+            if box.action == "close" and owner.on_close then
+                owner.on_close()
+                return true
+            elseif box.action == "previous_week" and owner.on_previous_week then
+                owner.on_previous_week(owner.previous_week_key)
+                return true
+            elseif box.action == "next_week" and owner.on_next_week then
+                owner.on_next_week(owner.next_week_key)
+                return true
+            end
+        end
+    end
+end
+
+function WeeklyBarsControls:onTapSelect(_, ges)
+    return self:handle_tap(ges)
+end
+
+function WeeklyBarsControls:onTap(_, ges)
+    return self:handle_tap(ges)
+end
+
+function WeeklyBarsWidget:init()
+    self.dimen = Geom:new{
+        x = 0,
+        y = 0,
+        w = screen_width(),
+        h = screen_height(),
+    }
     self.body_top = weekly_body_top()
+    self.controls = WeeklyBarsControls:new{
+        owner = self,
+        dimen = Geom:new{
+            x = 0,
+            y = 0,
+            w = self.dimen.w,
+            h = self.body_top,
+        },
+    }
     self.content = WeeklyBarsContent:new{
         report = self.report,
         week = self.report.weekly.weeks[self.week_key],
@@ -348,78 +428,17 @@ function WeeklyBarsWidget:init()
     self.content.show_parent = self
     self.scrollable.show_parent = self
     self.cropping_widget = self.scrollable
-    self[1] = self.scrollable
-end
-
-function WeeklyBarsWidget:add_hitbox(action, x, y, w, h, value)
-    table.insert(self.hitboxes, {
-        action = action,
-        x = x,
-        y = y,
-        w = w,
-        h = h,
-        value = value,
-    })
+    self[1] = self.controls
+    self[2] = self.scrollable
 end
 
 function WeeklyBarsWidget:paintTo(bb, x, y)
-    self.hitboxes = {}
     x = x or 0
     y = y or 0
-    self.dimen.x = x
-    self.dimen.y = y
 
     paint_rect(bb, x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
-
-    local cursor_y = y + PADDING
-
-    paint_text(bb, "Weekly View", x + PADDING, cursor_y + 4, 20)
-    local close_x = x + self.dimen.w - PADDING - BUTTON_WIDTH
-    paint_button(bb, "Close", close_x, cursor_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-    self:add_hitbox("close", close_x, cursor_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-    cursor_y = cursor_y + BUTTON_HEIGHT + HEADER_GAP
-
-    paint_text(bb, "Week of " .. Format.date_label(self.week_key), x + PADDING, cursor_y, 16)
-    cursor_y = cursor_y + WEEK_INFO_HEIGHT + HEADER_GAP
-
-    local nav_y = cursor_y
-    if self.previous_week_key then
-        paint_button(bb, "< Previous", x + PADDING, nav_y, PREVIOUS_BUTTON_WIDTH, BUTTON_HEIGHT)
-        self:add_hitbox("previous_week", x + PADDING, nav_y, PREVIOUS_BUTTON_WIDTH, BUTTON_HEIGHT)
-    end
-    if self.next_week_key then
-        local next_x = x + PADDING + PREVIOUS_BUTTON_WIDTH + BUTTON_GAP
-        paint_button(bb, "Next >", next_x, nav_y, NEXT_BUTTON_WIDTH, BUTTON_HEIGHT)
-        self:add_hitbox("next_week", next_x, nav_y, NEXT_BUTTON_WIDTH, BUTTON_HEIGHT)
-    end
-
+    self.controls:paintTo(bb, x, y)
     self.scrollable:paintTo(bb, x, y + self.body_top)
-end
-
-function WeeklyBarsWidget:handle_tap(ges)
-    local pos = ges and (ges.pos or ges)
-    for _, box in ipairs(self.hitboxes or {}) do
-        if point_in_box(pos, box) then
-            if box.action == "close" and self.on_close then
-                self.on_close()
-                return true
-            elseif box.action == "previous_week" and self.on_previous_week then
-                self.on_previous_week(self.previous_week_key)
-                return true
-            elseif box.action == "next_week" and self.on_next_week then
-                self.on_next_week(self.next_week_key)
-                return true
-            end
-        end
-    end
-end
-
-function WeeklyBarsWidget:onTapSelect(_, ges)
-    return self:handle_tap(ges)
-end
-
-function WeeklyBarsWidget:onTap(_, ges)
-    return self:handle_tap(ges)
 end
 
 function WeeklyBarsWidget:updateContentWidth()

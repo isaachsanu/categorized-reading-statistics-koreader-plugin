@@ -25,7 +25,7 @@ local MIN_HOUR_WIDTH = 28
 local BOX_VERTICAL_PADDING = 8
 local BOX_LABEL_SIZE = 8
 local BOX_LABEL_FONT = "NotoSans-Bold.ttf"
-local BOX_LABEL_OUTLINE_SIZE = 2
+local BOX_LABEL_OUTLINE_SIZE = 3
 local BOX_LABEL_OUTLINE_COLOR = Blitbuffer.COLOR_DARK_GRAY
 local GANTT_FILL_COLOR = Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_GRAY or Blitbuffer.COLOR_BLACK
 local BUTTON_WIDTH = 108
@@ -577,13 +577,11 @@ local DailyTimelineWidget = InputContainer:extend{
     name = "categorized_stats_daily_timeline",
 }
 
-function DailyTimelineWidget:init()
-    self.dimen = Geom:new{
-        x = 0,
-        y = 0,
-        w = screen_width(),
-        h = screen_height(),
-    }
+local DailyTimelineControls = InputContainer:extend{
+    name = "categorized_stats_daily_timeline_controls",
+}
+
+function DailyTimelineControls:init()
     self.hitboxes = {}
     self.ges_events = {
         TapSelect = {
@@ -593,7 +591,93 @@ function DailyTimelineWidget:init()
             },
         },
     }
+end
 
+function DailyTimelineControls:add_hitbox(action, x, y, w, h)
+    table.insert(self.hitboxes, {
+        action = action,
+        x = x,
+        y = y,
+        w = w,
+        h = h,
+    })
+end
+
+function DailyTimelineControls:paintTo(bb, x, y)
+    self.hitboxes = {}
+    self.dimen.x = x
+    self.dimen.y = y
+
+    local owner = self.owner
+    local table_x = x + PADDING
+    local table_y = y + owner.table_y
+    local title_width = owner.content.layout.title_width
+    local hour_width = owner.content.layout.hour_width
+    local grid_width = owner.content.layout.grid_width
+
+    paint_text(bb, "Daily Timeline", x + PADDING, y + PADDING + 4, 20)
+
+    local close_x = x + self.dimen.w - PADDING - BUTTON_WIDTH
+    local button_y = y + PADDING
+    paint_button(bb, "Close", close_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+    self:add_hitbox("close", close_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+
+    if owner.on_back then
+        local back_x = close_x - BUTTON_GAP - BUTTON_WIDTH
+        paint_button(bb, "Back", back_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+        self:add_hitbox("back", back_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+    end
+
+    paint_text(bb, Format.date_label(owner.date), x + PADDING, y + PADDING + BUTTON_HEIGHT, 16)
+
+    if #owner.books == 0 then
+        paint_text(bb, "No reading activity found for this day.", x + PADDING, table_y, 16)
+        return
+    end
+
+    paint_border(bb, table_x, table_y, grid_width, HEADER_HEIGHT + 1)
+    paint_rect(bb, table_x + title_width, table_y, 1, HEADER_HEIGHT)
+    paint_text(bb, "Title", table_x + 4, table_y + 8, 12)
+    for hour = 0, 23 do
+        local column_x = table_x + title_width + (hour * hour_width)
+        if hour > 0 then
+            paint_rect(bb, column_x, table_y, 1, HEADER_HEIGHT)
+        end
+        paint_text(bb, string.format("%02d", hour), column_x + 2, table_y + 8, 8)
+    end
+end
+
+function DailyTimelineControls:handle_tap(ges)
+    local pos = ges and (ges.pos or ges)
+    local owner = self.owner
+    for _, box in ipairs(self.hitboxes or {}) do
+        if point_in_box(pos, box) then
+            if box.action == "close" and owner.on_close then
+                owner.on_close()
+                return true
+            elseif box.action == "back" and owner.on_back then
+                owner.on_back()
+                return true
+            end
+        end
+    end
+end
+
+function DailyTimelineControls:onTapSelect(_, ges)
+    return self:handle_tap(ges)
+end
+
+function DailyTimelineControls:onTap(_, ges)
+    return self:handle_tap(ges)
+end
+
+function DailyTimelineWidget:init()
+    self.dimen = Geom:new{
+        x = 0,
+        y = 0,
+        w = screen_width(),
+        h = screen_height(),
+    }
     local segments = self.report.timeline_by_date[self.date] or {}
     self.books = collect_books(segments)
     self.table_y = PADDING + TABLE_TOP_OFFSET
@@ -608,6 +692,15 @@ function DailyTimelineWidget:init()
             y = 0,
             w = self.dimen.w - (PADDING * 2),
             h = 1,
+        },
+    }
+    self.controls = DailyTimelineControls:new{
+        owner = self,
+        dimen = Geom:new{
+            x = 0,
+            y = 0,
+            w = self.dimen.w,
+            h = self.body_y,
         },
     }
     self.scrollable = ScrollableContainer:new{
@@ -627,91 +720,20 @@ function DailyTimelineWidget:init()
     self.content.show_parent = self
     self.scrollable.show_parent = self
     self.cropping_widget = self.scrollable
-    self[1] = self.scrollable
-end
-
-function DailyTimelineWidget:add_hitbox(action, x, y, w, h, value)
-    table.insert(self.hitboxes, {
-        action = action,
-        x = x,
-        y = y,
-        w = w,
-        h = h,
-        value = value,
-    })
+    self[1] = self.controls
+    self[2] = self.scrollable
 end
 
 function DailyTimelineWidget:paintTo(bb, x, y)
-    self.hitboxes = {}
     x = x or 0
     y = y or 0
-    self.dimen.x = x
-    self.dimen.y = y
 
     paint_rect(bb, x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
-
-    local table_x = x + PADDING
-    local table_y = y + self.table_y
-    local title_width = self.content.layout.title_width
-    local hour_width = self.content.layout.hour_width
-    local grid_width = self.content.layout.grid_width
-
-    paint_text(bb, "Daily Timeline", x + PADDING, y + PADDING + 4, 20)
-
-    local close_x = x + self.dimen.w - PADDING - BUTTON_WIDTH
-    local button_y = y + PADDING
-    paint_button(bb, "Close", close_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-    self:add_hitbox("close", close_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-
-    if self.on_back then
-        local back_x = close_x - BUTTON_GAP - BUTTON_WIDTH
-        paint_button(bb, "Back", back_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-        self:add_hitbox("back", back_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
-    end
-
-    paint_text(bb, Format.date_label(self.date), x + PADDING, y + PADDING + BUTTON_HEIGHT, 16)
-
+    self.controls:paintTo(bb, x, y)
     if #self.books == 0 then
-        paint_text(bb, "No reading activity found for this day.", x + PADDING, table_y, 16)
         return
     end
-
-    paint_border(bb, table_x, table_y, grid_width, HEADER_HEIGHT + 1)
-    paint_rect(bb, table_x + title_width, table_y, 1, HEADER_HEIGHT)
-
-    paint_text(bb, "Title", table_x + 4, table_y + 8, 12)
-    for hour = 0, 23 do
-        local column_x = table_x + title_width + (hour * hour_width)
-        if hour > 0 then
-            paint_rect(bb, column_x, table_y, 1, HEADER_HEIGHT)
-        end
-        paint_text(bb, string.format("%02d", hour), column_x + 2, table_y + 8, 8)
-    end
-
-    self.scrollable:paintTo(bb, table_x, y + self.body_y)
-end
-
-function DailyTimelineWidget:handle_tap(ges)
-    local pos = ges and (ges.pos or ges)
-    for _, box in ipairs(self.hitboxes or {}) do
-        if point_in_box(pos, box) then
-            if box.action == "close" and self.on_close then
-                self.on_close()
-                return true
-            elseif box.action == "back" and self.on_back then
-                self.on_back()
-                return true
-            end
-        end
-    end
-end
-
-function DailyTimelineWidget:onTapSelect(_, ges)
-    return self:handle_tap(ges)
-end
-
-function DailyTimelineWidget:onTap(_, ges)
-    return self:handle_tap(ges)
+    self.scrollable:paintTo(bb, x + PADDING, y + self.body_y)
 end
 
 function DailyTimelineView.latest_date(report)
