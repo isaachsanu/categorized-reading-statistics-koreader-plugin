@@ -23,8 +23,10 @@ local BOOK_COLLECTION_Y_OFFSET = 34
 local BOOK_COLLECTION_FONT = "NotoSans-Italic.ttf"
 local MIN_HOUR_WIDTH = 28
 local BOX_VERTICAL_PADDING = 8
-local BOX_LABEL_SIZE = 6
+local BOX_LABEL_SIZE = 8
 local BOX_LABEL_FONT = "NotoSans-Bold.ttf"
+local BOX_LABEL_OUTLINE_SIZE = 2
+local BOX_LABEL_OUTLINE_COLOR = Blitbuffer.COLOR_DARK_GRAY
 local GANTT_FILL_COLOR = Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_GRAY or Blitbuffer.COLOR_BLACK
 local BUTTON_WIDTH = 108
 local BUTTON_HEIGHT = 60
@@ -120,8 +122,16 @@ local function duration_label(seconds)
     return string.format("%dm", minutes)
 end
 
-local function paint_centered_text(bb, text, x, y, w, h, size, font_face)
-    local display_text = crop_to_width(text, math.max(0, w - 4), size, font_face)
+local function paint_centered_text(bb, text, x, y, w, h, size, font_face, clip_left, clip_right)
+    local max_width = math.max(0, w - 4)
+    if clip_left and clip_right then
+        max_width = math.max(
+            0,
+            clip_right - clip_left - (BOX_LABEL_OUTLINE_SIZE * 2)
+        )
+    end
+
+    local display_text = crop_to_width(text, max_width, size, font_face)
     if display_text == "" then
         return
     end
@@ -133,7 +143,25 @@ local function paint_centered_text(bb, text, x, y, w, h, size, font_face)
     local text_x = x + math.floor((w - text_w) / 2)
     local text_y = y + math.max(1, math.floor((h - text_h) / 2))
 
-    paint_rect(bb, text_x - 2, text_y - 1, text_w + 4, text_h + 2, GANTT_FILL_COLOR)
+    if clip_left and clip_right then
+        local min_x = clip_left + BOX_LABEL_OUTLINE_SIZE
+        local max_x = clip_right - BOX_LABEL_OUTLINE_SIZE - text_w
+        text_x = clamp(text_x, min_x, math.max(min_x, max_x))
+    end
+
+    local outline_widget = text_widget(
+        display_text,
+        size,
+        BOX_LABEL_OUTLINE_COLOR,
+        font_face
+    )
+    for offset_x = -BOX_LABEL_OUTLINE_SIZE, BOX_LABEL_OUTLINE_SIZE do
+        for offset_y = -BOX_LABEL_OUTLINE_SIZE, BOX_LABEL_OUTLINE_SIZE do
+            if offset_x ~= 0 or offset_y ~= 0 then
+                outline_widget:paintTo(bb, text_x + offset_x, text_y + offset_y)
+            end
+        end
+    end
     widget:paintTo(bb, text_x, text_y)
 end
 
@@ -296,6 +324,10 @@ local function paint_hour_block_box(bb, table_x, title_width, hour_width, row_y,
 
     paint_rect(bb, box.x, box.y, box.w, box.h, GANTT_FILL_COLOR)
     paint_border(bb, box.x, box.y, box.w, box.h)
+    return box
+end
+
+local function paint_hour_block_label(bb, box, block, clip_left, clip_right)
     paint_centered_text(
         bb,
         duration_label(block.duration),
@@ -304,9 +336,10 @@ local function paint_hour_block_box(bb, table_x, title_width, hour_width, row_y,
         box.w,
         box.h,
         BOX_LABEL_SIZE,
-        BOX_LABEL_FONT
+        BOX_LABEL_FONT,
+        clip_left,
+        clip_right
     )
-    return box
 end
 
 local function paint_hour_segment_box(bb, table_x, title_width, hour_width, row_y, segment)
@@ -459,6 +492,9 @@ function DailyTimelineContent:paintTo(bb, x, y)
     local title_width = self.layout.title_width
     local hour_width = self.layout.hour_width
     local grid_width = self.layout.grid_width
+    local timeline_left = x + title_width + 1
+    local timeline_right = x + grid_width - 1
+    local rendered_blocks = {}
 
     paint_border(bb, x, y, grid_width, self.dimen.h)
     paint_rect(bb, x + title_width, y, 1, self.dimen.h)
@@ -498,8 +534,22 @@ function DailyTimelineContent:paintTo(bb, x, y)
 
         for _, block in ipairs(book.merged_blocks or {}) do
             local box = paint_hour_block_box(bb, x, title_width, hour_width, row_y, block)
+            table.insert(rendered_blocks, {
+                block = block,
+                box = box,
+            })
             self:add_hitbox(box.x, box.y, box.w, box.h, book)
         end
+    end
+
+    for _, rendered_block in ipairs(rendered_blocks) do
+        paint_hour_block_label(
+            bb,
+            rendered_block.box,
+            rendered_block.block,
+            timeline_left,
+            timeline_right
+        )
     end
 end
 
