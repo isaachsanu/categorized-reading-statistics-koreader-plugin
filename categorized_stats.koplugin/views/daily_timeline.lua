@@ -619,7 +619,7 @@ function DailyTimelineWidget:paintTo(bb, x, y)
         self:add_hitbox("back", back_x, button_y, BUTTON_WIDTH, BUTTON_HEIGHT)
     end
 
-    paint_text(bb, "Date: " .. (self.date or ""), x + PADDING, y + PADDING + BUTTON_HEIGHT, 16)
+    paint_text(bb, Format.date_label(self.date), x + PADDING, y + PADDING + BUTTON_HEIGHT, 16)
 
     if #self.books == 0 then
         paint_text(bb, "No reading activity found for this day.", x + PADDING, table_y, 16)
@@ -693,7 +693,7 @@ function DailyTimelineView.render(report, date)
         return table.concat(lines, "\n")
     end
 
-    table.insert(lines, "Date: " .. date)
+    table.insert(lines, Format.date_label(date))
     table.insert(lines, "")
 
     local segments = report.timeline_by_date[date] or {}

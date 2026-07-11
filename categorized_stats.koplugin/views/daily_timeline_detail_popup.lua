@@ -8,6 +8,7 @@ local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 local logger = require("logger")
 
+local Format = require("views/format")
 local DailyTimelineView = require("views/daily_timeline")
 
 local DailyTimelineDetailPopupView = {}
@@ -28,7 +29,7 @@ end
 
 local function track_text(book, date)
     local lines = {
-        "Date: " .. tostring(date or ""),
+        Format.date_label(date),
         "",
         "Track baca hari ini:",
     }

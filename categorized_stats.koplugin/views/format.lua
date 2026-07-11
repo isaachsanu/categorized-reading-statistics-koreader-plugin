@@ -1,5 +1,73 @@
 local Format = {}
 
+local WEEKDAYS = {
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+}
+
+local MONTHS = {
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+}
+
+function Format.date_label(date_key)
+    local original = tostring(date_key or "")
+    local year, month, day = original:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)$")
+    year = tonumber(year)
+    month = tonumber(month)
+    day = tonumber(day)
+
+    if not year or not month or not day or month < 1 or month > 12 or day < 1 or day > 31 then
+        return original
+    end
+
+    local timestamp = os.time{
+        year = year,
+        month = month,
+        day = day,
+        hour = 12,
+        min = 0,
+        sec = 0,
+    }
+    if not timestamp then
+        return original
+    end
+
+    local parts = os.date("*t", timestamp)
+    if not parts
+        or parts.year ~= year
+        or parts.month ~= month
+        or parts.day ~= day
+        or not WEEKDAYS[parts.wday]
+        or not MONTHS[parts.month]
+    then
+        return original
+    end
+
+    return string.format(
+        "%s, %d %s %04d",
+        WEEKDAYS[parts.wday],
+        parts.day,
+        MONTHS[parts.month],
+        parts.year
+    )
+end
+
 function Format.seconds(seconds)
     seconds = tonumber(seconds) or 0
     local minutes = math.floor((seconds + 30) / 60)

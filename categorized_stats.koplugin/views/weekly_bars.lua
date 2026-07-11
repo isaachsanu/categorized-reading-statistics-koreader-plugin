@@ -242,7 +242,7 @@ function WeeklyBarsContent:paintTo(bb, x, y)
     for _, day in ipairs(self.days) do
         local day_y = y + day.top
         local cursor_y = day_y
-        paint_text(bb, "Date: " .. day.date, x + PADDING, cursor_y, 16)
+        paint_text(bb, Format.date_label(day.date), x + PADDING, cursor_y, 16)
         cursor_y = cursor_y + DAY_HEADER_HEIGHT
 
         if #day.rows == 0 then
@@ -379,7 +379,7 @@ function WeeklyBarsWidget:paintTo(bb, x, y)
     self:add_hitbox("close", close_x, cursor_y, BUTTON_WIDTH, BUTTON_HEIGHT)
     cursor_y = cursor_y + BUTTON_HEIGHT + HEADER_GAP
 
-    paint_text(bb, "Week of " .. self.week_key, x + PADDING, cursor_y, 16)
+    paint_text(bb, "Week of " .. Format.date_label(self.week_key), x + PADDING, cursor_y, 16)
     cursor_y = cursor_y + WEEK_INFO_HEIGHT + HEADER_GAP
 
     local nav_y = cursor_y
@@ -487,11 +487,11 @@ function WeeklyBarsView.render(report, week_key)
         return table.concat(lines, "\n")
     end
 
-    table.insert(lines, "Week of " .. week.week_key)
+    table.insert(lines, "Week of " .. Format.date_label(week.week_key))
     table.insert(lines, "")
 
     for _, day in ipairs(week.days) do
-        table.insert(lines, "Date: " .. day.date)
+        table.insert(lines, Format.date_label(day.date))
         for _, category in ipairs(ordered_categories(report, week.day_categories[day.date])) do
             table.insert(lines, string.format(
                 "%s: [%s] %s",
